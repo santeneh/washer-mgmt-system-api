@@ -1,0 +1,17 @@
+%dw 2.0
+
+type auto_3f0cee3b_0044_4324_b7ad_c28af19d0bf7_Input_Payload = {
+  Active?: Boolean, 
+  Email?: String, 
+  Address?: String, 
+  FirstName?: String, 
+  Phone?: String, 
+  Address2?: String, 
+  PostalCode?: String, 
+  LastName?: String, 
+  City?: String, 
+  District?: String, 
+  WasherId: String, 
+  _?: Any
+}
+

@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<validation:config name="Validation_Config" doc:name="Validation Config" doc:id="8a930c4d-2ef0-4bec-be56-5fa8a725dd97" />
+	<flow name="washer-mgmt-system-api:put-washer" doc:id="3f0cee3b-0044-4324-b7ad-c28af19d0bf7" >
+		<set-variable value="#[payload]" doc:name="Set Payload Variable" doc:id="2ca891fd-b29e-4e11-8ba4-bffcf1a34eb4" variableName="payload"/>
+		<set-variable value="#[payload.WasherId]" doc:name="Set washerID Variable" doc:id="485387c2-bc7f-40cd-8fb0-3ac5a7adb5de" variableName="washerId"/>
+		<logger level="INFO" doc:name="logPayload" doc:id="9b66b405-8494-48b2-bb78-4201e9f9d6e6" message="#[payload]"/>
+		<ee:transform doc:name="Split Payload" doc:id="bbbb4331-2f41-4d0f-8b08-11be21020000">
+					<ee:message>
+					</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="washerAddress" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	address: payload.Address default "",
+	address2: payload.Address2 default "",
+	district: payload.District default "",
+	city: payload.City default "",
+	postal_code: if ( not isEmpty (payload.PostalCode) or 
+		                   payload.PostalCode != null or 
+		                   payload.PostalCode != ""
+	                        ) payload.PostalCode else "00000",
+	create_date: now()
+	 
+}]]></ee:set-variable>
+				<ee:set-variable variableName="washerInfo" ><![CDATA[%dw 2.0
+output application/json
+
+---
+{
+	washer_id: payload.WasherId,
+	first_name: payload.FirstName default "",
+	last_name: payload.LastName default "",
+	email: payload.Email default "",
+	active: payload.Active default 0,
+	phone: payload.Phone default ""
+}]]></ee:set-variable>
+			</ee:variables>
+				</ee:transform>
+		<db:select doc:name="Select AddressID from washerInfo Table" doc:id="4b007678-08f4-4329-8cb4-d7f1660e8531" config-ref="Mysql_Database_Config">
+			<reconnect />
+			<db:sql ><![CDATA[SELECT address_id FROM washerInfo WHERE washer_id = :WasherId]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+WasherId: vars.washerId
+}]]]></db:input-parameters>
+		</db:select>
+		<validation:is-true doc:name="Expression - payload.size &gt; 0" doc:id="bb3e7f1c-c2be-4343-8970-8dabaf96b4fc" expression="#[sizeOf(payload) &gt; 0]"/>
+		<set-variable value="#[output applicaipation/java --- payload[0].address_id]" doc:name="Set addressId Variable" doc:id="7248fa20-548b-473e-a88d-f53b78df06ba" variableName="addressID"/>
+		<db:update doc:name="Update WasherAddress Table" doc:id="7add86b0-9cc3-4ed5-afbf-8c0b32c8e466" config-ref="Mysql_Database_Config">
+			<reconnect />
+			<db:sql ><![CDATA[UPDATE washerAddress SET address = :address,
+                         address2 = :address2,
+                         district = :district,
+                         city= :city,
+                         postal_code =:postal_code
+                         WHERE address_id =:address_id
+
+]]></db:sql>
+			<db:input-parameters ><![CDATA[#[vars.washerAddress ++ (address_id: vars.addressID)]]]></db:input-parameters>
+		</db:update>
+		<db:update doc:name="Update WasherInfo Table" doc:id="2a388dc9-5154-4a9e-8b3c-97cdc3b4d68d" config-ref="Mysql_Database_Config" autoGenerateKeys="true">
+			<reconnect />
+			<db:sql><![CDATA[UPDATE washerInfo SET first_name = :first_name,
+                         last_name = :last_name,
+                         email = :email,
+                         active= :active,
+                         phone =:phone
+                         WHERE washer_id =:washer_id
+
+]]></db:sql>
+			<db:input-parameters><![CDATA[#[vars.washerInfo]]]></db:input-parameters>
+		</db:update>
+		<set-payload value='#[output text/plain &#10;--- &#10;&#10;"The Washer ID " ++  (vars.washerId as String default "")  ++  " has been successfully updated."]' doc:name="Set Response Payload" doc:id="46ca1539-64f0-4c56-be67-ef31aa15e9ae" />
+		<logger level="INFO" doc:name="Log Response" doc:id="e790e779-af19-4f04-943d-3bf61d8459ee" message="#[payload]"/>
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="a7911713-a95c-4d52-9843-bd3bbd6f9b08" type="VALIDATION:INVALID_BOOLEAN">
+				<set-payload value='#[output text/plain &#10;--- &#10;&#10;"The Washer ID " ++  (vars.washerId as String default "")  ++  " is not available."]' doc:name="Set Response Payload" doc:id="321c3831-0b92-496d-a07d-e9fd74e80c38" />
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="washer-mgmt-system-api:get-washer(s)" doc:id="8de64f4d-33b7-48db-8f6e-256a1e7c0bac" >
+		<db:select doc:name="Select Washer(s)" doc:id="3a20638e-79cf-4c07-b552-80f1dd245008" config-ref="Mysql_Database_Config">
+			<reconnect />
+			<db:sql ><![CDATA[SELECT w.washer_id,w.first_name,w.last_name,w.email,w.phone,
+IF(w.`active`, 'true', 'false') active,
+wa.address,wa.address2,wa.district,wa.city,wa.postal_code
+FROM
+    washerInfo w
+inner JOIN washerAddress wa ON w.address_id = wa.address_id order by w.washer_id Asc;]]></db:sql>
+		</db:select>
+		<validation:is-true doc:name="Expression - payload.size &gt; 0" doc:id="6d2316c7-24fb-4999-bb1c-3e0f5c44ebda" expression="#[sizeOf(payload) &gt; 0]" />
+		<ee:transform doc:name="Transform Payload To JSON" doc:id="64792075-51d8-4a5c-93b8-cd3d891a24c7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload map (wahser,index)->{
+	WasherId: wahser.washer_id,
+	FirstName:wahser.first_name,
+	LastName: wahser.last_name,
+	Email: wahser.email, 
+	Phone: wahser.phone,
+	Active: wahser.active,	
+	Address:  wahser.address,
+	Address2:  wahser.address2,
+	District:  wahser.district,
+	City:  wahser.city,
+	PostalCode: wahser.postal_code
+ 
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log Payload" doc:id="5ecf7b73-ddf9-49eb-9ba4-834a0edfc1d0" message="#[payload]" />
+		<error-handler>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="7eff1a4b-d953-47d8-9cfc-930f55f3a314" type="VALIDATION:INVALID_BOOLEAN">
+				<set-payload value='#[output text/plain &#10;--- &#10;&#10;"No washer information is not available."]' doc:name="Set Response Payload" doc:id="7383e569-5015-483f-809c-fe9d5b88920b" />
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="washer-mgmt-system-api:get-washer-byID" doc:id="07302a70-1b3c-4961-8d46-5263c960d26d" >
+		<set-variable value="#[attributes.uriParams.washerID]" doc:name="wahserID Variable" doc:id="224ce856-a394-4349-b7b1-55b8c48a4a36" variableName="washerId"/>
+		<db:select doc:name="Select Washer Data by ID" doc:id="bac031ff-629a-4e6a-b90d-ba82193625fa" config-ref="Mysql_Database_Config" >
+			<reconnect />
+			<db:sql ><![CDATA[SELECT w.washer_id, w.first_name, w.last_name, w.email, w.phone,
+IF(w.`active`, 'true', 'false') active,
+wa.address, wa.address2, wa.district, wa.city, wa.postal_code
+FROM
+    washerInfo w
+inner JOIN washerAddress wa ON w.address_id = wa.address_id WHERE washer_id =:washerId;]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	washerId: vars.washerId
+}]]]></db:input-parameters>
+		</db:select>
+		<validation:is-true doc:name="Expression - payload.size &gt; 0" doc:id="31b51070-e0be-43ed-9422-0b80acf6e669" expression="#[sizeOf(payload) &gt; 0]" />
+		<ee:transform doc:name="Transform Payload To JSON" doc:id="119a07de-4538-4804-8237-7e642af6ddc8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload map (wahser,index)->{
+	WasherId: wahser.washer_id,
+	FirstName:wahser.first_name,
+	LastName: wahser.last_name,
+	Email: wahser.email, 
+	Phone: wahser.phone,
+	Active: wahser.active,	
+	Address:  wahser.address,
+	Address2:  wahser.address2,
+	District:  wahser.district,
+	City:  wahser.city,
+	PostalCode: wahser.postal_code
+ 
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log Payload" doc:id="833de7bd-83ce-4db0-84d9-7b679bbf7ed0" message="#[payload]" />
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="f3a8eab0-f630-4a13-8962-f3f1e2d7b737" type="VALIDATION:INVALID_BOOLEAN" >
+				<set-payload value='#[output text/plain &#10;--- &#10;&#10;"The Washer ID " ++  (vars.washerId as String default "")  ++  " is not available."]' doc:name="Set Response Payload" doc:id="93c144d0-dabf-4505-a46f-df41b01b90f2" />
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="washer-mgmt-system-api:post-washer" doc:id="eecbf8bb-5cd9-4667-b2a7-ddb35ea8cdc1" >
+		<set-variable value="#[message.payload]" doc:name="Set Payload Variable" doc:id="c01e7a43-e45b-444e-a963-f57210e32091" variableName="payload" />
+		<logger level="INFO" doc:name="Log Payload" doc:id="e8c30b70-2a8e-494d-8898-a522234e73f2" message="#[vars.payload]" />
+		<ee:transform doc:name="Split Payload" doc:id="3f4f7669-9f44-4e1e-ad4a-e776c80a2eba" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="washerAddress" ><![CDATA[%dw 2.0
+output application/json 
+---
+{
+	address: vars.payload.Address default "",
+	address2: vars.payload.Address2 default "",
+	district: vars.payload.District default "",
+	city: vars.payload.City default "",
+	postal_code: vars.payload.PostalCode default "00000",
+	create_date: now()
+	 
+}]]></ee:set-variable>
+				<ee:set-variable variableName="washerInfo" ><![CDATA[%dw 2.0
+output application/java 
+
+---
+{
+	first_name: vars.payload.FirstName default "",
+	last_name: vars.payload.LastName default "",
+	email: vars.payload.Email default "",
+	active: vars.payload.Active default 0,
+	phone: vars.payload.Phone default ""
+	}]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<db:insert doc:name="Insert Address into washerAddress table" doc:id="0327a915-1879-40c7-8d97-ccfdb07b9306" config-ref="Mysql_Database_Config">
+			<reconnect />
+			<db:sql ><![CDATA[INSERT INTO washerAddress(address, address2, district, city, postal_code, create_date)
+VALUES (:address, :address2, :district, :city, :postal_code, now() )]]></db:sql>
+			<db:input-parameters ><![CDATA[#[vars.washerAddress]]]></db:input-parameters>
+		</db:insert>
+		<db:query-single doc:name="Query Address ID" doc:id="7a3bcf48-ef4d-4256-8ab7-0412c7dfeda4" config-ref="Mysql_Database_Config">
+			<reconnect />
+			<db:sql ><![CDATA[SELECT max(address_id) AS address_id FROM washerAddress]]></db:sql>
+		</db:query-single>
+		<validation:is-true doc:name="Expression - payload.size &gt; 0" doc:id="30e20794-4eac-41c3-9796-16083d147109" expression="#[sizeOf(payload) &gt; 0]" />
+		<set-variable value="#[payload.address_id]" doc:name="Set addressId Variable" doc:id="62953b6a-4aa5-4c3c-a51f-6bfa967aaff0" variableName="addressID" />
+		<db:insert doc:name="Insert washer into wahserInfo table" doc:id="080d3432-52e8-4efb-9769-2d6ec6128d6c" config-ref="Mysql_Database_Config">
+			<reconnect />
+			<db:sql><![CDATA[INSERT INTO washerInfo(address_id, first_name, last_name, email, active, phone, create_date)
+VALUES (:address_id, :first_name, :last_name, :email, :active, :phone, now())
+]]></db:sql>
+			<db:input-parameters><![CDATA[#[output application/json --- vars.washerInfo ++ (address_id: vars.addressID)]]]></db:input-parameters>
+		</db:insert>
+		<db:query-single doc:name="Query WasherID" doc:id="4a88b2c7-3d2f-4957-9218-ec72f1dbc58c" config-ref="Mysql_Database_Config">
+			<reconnect />
+			<db:sql><![CDATA[SELECT washer_id AS washer_id FROM washerInfo WHERE
+address_id =:addressID ]]></db:sql>
+			<db:input-parameters ><![CDATA[#[output application/json ---
+	addressID: vars.addressID]]]></db:input-parameters>
+		</db:query-single>
+		<set-payload value='#[output text/plain &#10;--- &#10;&#10;"The Washer ID " ++  (payload.washer_id as String default "")  ++  " has been successfully updated."]' doc:name="Set Response Payload" doc:id="9c3c4190-429e-4a09-9af7-63e4d372f037" />
+		<logger level="INFO" doc:name="Log Response" doc:id="4e1acc90-a591-44bf-99fb-d2cb103f7f42" message="#[payload]" />
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="f68d9e8e-b39e-4d82-b1da-a0335a62e716" type="VALIDATION:INVALID_BOOLEAN" >
+				<set-payload value='#[output text/plain &#10;--- &#10;&#10;"The Washer ID " ++  (vars.washerId as String default "")  ++  " is not available."]' doc:name="Set Response Payload" doc:id="3eea5f08-d144-4fa4-bb33-e1c9eba47009" />
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+</mule>
